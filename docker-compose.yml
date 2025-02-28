@@ -1,18 +1,19 @@
-version: '3.8'
-
 services:
-  web:
+  backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
       args:
         - NODE_ENV=production
     ports:
       - "3000:3000"
+    env_file:
+      - ./backend/.env
     environment:
       - NODE_ENV=production
       - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - VITE_API_URL=http://localhost:3000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -25,8 +26,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+      - /var/run
+      - /var/cache/nginx
+    depends_on:
+      - database
     networks:
-      - app-network
+      - hivley-network
     deploy:
       resources:
         limits:
@@ -36,6 +41,50 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /var/log/nginx
+    networks:
+      - hivley-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  database:
+    image: postgres:15
+    container_name: supabase-db
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: hivley
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - hivley-network
+
 networks:
-  app-network:
+  hivley-network:
     driver: bridge

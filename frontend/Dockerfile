@@ -1,29 +1,38 @@
-# 1️⃣ Build the frontend using Node.js
-FROM node:20 AS builder
+# Stage 1: Build the frontend
+FROM node:20-slim AS builder
 
-# 2️⃣ Set working directory
+# Set working directory
 WORKDIR /app
 
-# 3️⃣ Copy package files first (to optimize caching)
-COPY package.json package-lock.json ./
-
-# 4️⃣ **Force npm to install ALL dependencies**
+# Copy package files first (for better caching)
+COPY package*.json ./
 RUN npm ci
 
-# 5️⃣ Copy all frontend source code
+# Copy source code
 COPY . .
 
-# 6️⃣ ✅ Ensure the frontend actually builds
-RUN npm run build && ls -l /app/dist
+# Build the frontend
+RUN npm run build
 
-# 7️⃣ Use NGINX to serve the built frontend
-FROM nginx:alpine
+# Stage 2: Serve the frontend using NGINX
+FROM nginx:alpine AS production
 
-# 8️⃣ Copy the built frontend files
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Set working directory
+WORKDIR /usr/share/nginx/html
 
-# 9️⃣ Expose port 80
+# Copy built frontend from builder
+COPY --from=builder /app/dist .
+
+# Ensure NGINX has write access (if needed)
+RUN mkdir -p /var/cache/nginx/client_temp && \
+    chmod -R 777 /var/cache/nginx/client_temp
+
+# Expose port 80
 EXPOSE 80
 
-# 🔟 Start NGINX
+# Set health check with extended start-period
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost || exit 1
+
+# Start NGINX
 CMD ["nginx", "-g", "daemon off;"]
